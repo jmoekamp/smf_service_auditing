@@ -87,9 +87,9 @@ radcli.ADRGlobPattern({"service" : observer_service, "instance" : observer_insta
     return default_auditflags
 
 def findservicestobeobserved():
-	""" this function searches for dependencies with a name beginning with 
-	smfserviceauditing_  and pushes the fmri onto an array and return this.
-	"""
+    """ this function searches for dependencies with a name beginning with 
+    smfserviceauditing_  and pushes the fmri onto an array and return this.
+    """
     functionflow("findservicestobeobserved")
     observed_fmri=[]
     smf_fmri=os.environ['SMF_FMRI']
@@ -175,10 +175,10 @@ radcli.ADRGlobPattern({"service" : observed_service, "instance" : observed_insta
     return processes 
            
 def iterate_through_observed_services():
-	""" Go through to all services and do the job
-	In principle this is the function where business logic starts.
-	"""
-	
+    """ Go through to all services and do the job
+    In principle this is the function where business logic starts.
+    """
+    
     functionflow("iterate_through_observed_services")
     observed_services=findservicestobeobserved()
     debug("found dependencies" + str(len(observed_services)))
