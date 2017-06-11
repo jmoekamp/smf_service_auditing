@@ -1,0 +1,175 @@
+#!/usr/bin/python2.7
+
+DEBUG = False
+LOG = True
+FLOW = False
+
+import os
+import sys
+import smf_include
+import rad.client as radcli
+import rad.connect as radcon
+import rad.bindings.com.oracle.solaris.rad.smf_1 as sbind
+import re
+import subprocess
+import time
+
+con = radcon.connect_unix()
+
+def debug(s):
+    if DEBUG:
+        print 'DEBUG -> ' + s
+        
+def log(s):
+    if LOG:
+        print 'LOG   -> ' + s
+        
+def functionflow(s):
+    if FLOW:
+        print 'FLOW  -> ' + s
+                        
+def sanitizing(to_sanitize,allowed):
+    functionflow("sanitizing")
+    sanitation_regexp='^!['+allowed+']*'
+    in_sanitizing=str(to_sanitize)
+    debug("to sanitize " + in_sanitizing + " with " + sanitation_regexp)
+    in_sanitizing=in_sanitizing.rstrip("\n")
+    in_sanitizing=in_sanitizing.rstrip(" ")
+    in_sanitizing=in_sanitizing.lstrip(" ")
+    in_sanitizing=re.sub(sanitation_regexp, '', in_sanitizing, 0, re.I)
+    sanitized=in_sanitizing
+    debug("sanitizing result " + sanitized)
+    return sanitized
+
+def getaudit_flags(fmri):
+    functionflow("getaudit_flags")
+    observed_fmri=[]
+    smf_fmri=os.environ['SMF_FMRI']
+    debug(smf_fmri)
+    m = re.match('svc\:\/(\S+)\:(\S+)', smf_fmri)
+    if m:
+        observer_service=m.group(1)
+        observer_instance=m.group(2)
+    else:
+        debug("Error: Not a valid FMRI")
+    rad_observer_instance = con.get_object(sbind.Instance(), 
+radcli.ADRGlobPattern({"service" : observer_service, "instance" : observer_instance}))
+    debug(str(rad_observer_instance.pgs))
+    for i in range (0, len(rad_observer_instance.pgs)):
+        if rad_observer_instance.pgs[i].name.startswith("audited_service"):
+            name_of_pg=str(rad_observer_instance.pgs[i].name)
+            debug("Found audited_service config pg"+name_of_pg)
+            property_fmri = rad_observer_instance.readProperty(name_of_pg + "/fmri")
+            property_auditflags = rad_observer_instance.readProperty(name_of_pg + "/auditflags")
+            foundfmri=str(property_fmri.values[0])
+            foundfmri=foundfmri.strip(' ')
+            foundauditflags=str(property_auditflags.values[0])
+            foundauditflags=foundauditflags.strip(' ');
+            debug("fmri of this audited_services* pg "+ foundfmri)
+            debug("auditflags of this audited_services* pg"+foundauditflags)
+            if foundfmri == fmri:
+                debug("DEBUG: audited_service pg matching fmri" + fmri )
+                return foundauditflags
+        else:
+            debug("Debug: Ignoring pg")
+    debug("No auditflags match found. Going default.")
+    default_auditflags = rad_observer_instance.readProperty("auditconfig/defaultflags").values[0]
+    debug("Using default auditflags " + default_auditflags)
+    return default_auditflags
+
+def findservicestobeobserved():
+    functionflow("findservicestobeobserved")
+    observed_fmri=[]
+    smf_fmri=os.environ['SMF_FMRI']
+    log("observing service " + smf_fmri)
+    m = re.match('svc\:\/(\S+)\:(\S+)', smf_fmri)
+    if m:
+        observer_service=m.group(1)
+        observer_instance=m.group(2)
+    else:
+        debug("Error: Not a valid FMRI")
+    rad_observer_instance = con.get_object(sbind.Instance(), 
+radcli.ADRGlobPattern({"service" : observer_service, "instance" : observer_instance}))
+    numberof_observer_dependencies = len(rad_observer_instance.dependencies)
+    debug("Number of dependencies "+str(numberof_observer_dependencies))
+    debug("Dependencies " + str(rad_observer_instance.dependencies))
+    for i in range (0, numberof_observer_dependencies):
+        if rad_observer_instance.dependencies[i].name.startswith("smfserviceauditing_"):
+            observed_fmri.append(rad_observer_instance.dependencies[i].target[0])
+            debug("Found auditsetter dependency")
+            debug(rad_observer_instance.dependencies[i].target[0])
+        else:
+            debug("Debug: Ignoring dependency")
+    return observed_fmri
+    
+def findprocessesofacontract( contractid ):
+    functionflow("findprocessesofacontract")
+    processes = []
+    sanitized_contractid=sanitizing(contractid,"0-9")
+    debug("sanitized contractid " +sanitized_contractid)
+    pgrep_output = subprocess.check_output(['pgrep', '-d,' ,'-c '+str(sanitized_contractid)])
+    pgrep_output_text = pgrep_output.decode('utf-8')
+    pgrep_output_text = pgrep_output_text.rstrip('\n')
+    processes = pgrep_output_text.split(",")
+    return processes
+    
+def set_auditflags(process, auditflags):
+    functionflow("set_auditflags")
+    sanitized_process=sanitizing(process,"0-9")
+    sanitized_auditflags=sanitizing(auditflags,"a-z0-9,")
+    debug("sanitized process "+sanitized_process)
+    debug("sanitized auditflags "+sanitized_auditflags)
+    auditconfig = subprocess.check_call(['auditconfig', '-setpmask' , "%s"%sanitized_process,"%s"%sanitized_auditflags])
+    log("Process : " + sanitized_process + " Flags: " +sanitized_auditflags)
+    return
+    
+def findprocessesofanservice( servicename ):
+    functionflow("findprocessesofanservice")
+    log("Service "+servicename)
+    processes = []
+    observed_service=""
+    observed_instance=""
+    debug("find "+servicename)
+    auditflags=getaudit_flags(servicename)
+    m = re.match('svc\:\/(\S+)\:(\S+)', servicename)
+    if m:
+        observed_service=m.group(1)
+        observed_instance=m.group(2)
+    else:
+        m = re.match('svc\:\/(\S+)', servicename)
+        if m:
+            observed_service=m.group(1)
+            observed_instance="default"
+        else:
+            debug("find : not a valid service name")
+            return processes    
+    rad_observed_instance = con.get_object(sbind.Instance(), 
+radcli.ADRGlobPattern({"service" : observed_service, "instance" : observed_instance}))
+    contract_id = rad_observed_instance.ex_state.contractid
+    log("Contractid "+str(contract_id))
+    processes_of_contract=findprocessesofacontract(contract_id)
+    debug("Processes in Contract:")
+    for i in range (0, len(processes_of_contract)):
+        debug(processes_of_contract[i])
+        set_auditflags(processes_of_contract[i],auditflags)
+    return processes 
+           
+def iterate_through_observed_services():
+    functionflow("iterate_through_observed_services")
+    observed_services=findservicestobeobserved()
+    debug("found dependencies" + str(len(observed_services)))
+    debug(str(observed_services))
+    for i in range (0, len(observed_services)):
+        processesofaservice=findprocessesofanservice(observed_services[i])     
+       
+def start():
+    iterate_through_observed_services();
+    return smf_include.SMF_EXIT_OK
+
+def stop():
+    return smf_include.SMF_EXIT_OK
+
+def refresh():
+    return smf_include.SMF_EXIT_OK
+
+smf_include.smf_main()
