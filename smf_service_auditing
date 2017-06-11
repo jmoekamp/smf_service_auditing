@@ -1,5 +1,11 @@
 #!/usr/bin/python2.7
 
+
+"""smf_service_auditing
+(c) 2017 Joerg Moellenkamp
+proof of concept hack for a service setting auditflags for other services processes
+"""
+
 DEBUG = False
 LOG = True
 FLOW = False
