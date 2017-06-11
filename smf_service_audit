@@ -29,6 +29,9 @@ def functionflow(s):
         print 'FLOW  -> ' + s
                         
 def sanitizing(to_sanitize,allowed):
+    """ This function strips whitespaces from both ends of the strings, strips
+    newline and replaces all characters now allowed by nothing 
+    """
     functionflow("sanitizing")
     sanitation_regexp='^!['+allowed+']*'
     in_sanitizing=str(to_sanitize)
