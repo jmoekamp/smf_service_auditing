@@ -29,6 +29,9 @@ def functionflow(s):
         print 'FLOW  -> ' + s
                         
 def sanitizing(to_sanitize,allowed):
+    """ This function strips whitespaces from both ends of the strings, strips
+    newline and replaces all characters now allowed by nothing 
+    """
     functionflow("sanitizing")
     sanitation_regexp='^!['+allowed+']*'
     in_sanitizing=str(to_sanitize)
@@ -42,6 +45,12 @@ def sanitizing(to_sanitize,allowed):
     return sanitized
 
 def getaudit_flags(fmri):
+    """ This function searches for a property group that begins with 
+    audited_service. It iterates through all property groups that fullfill this condition
+    It checks if the fmri that is passed to this function is equal to the fmri property
+    in the the property groups. If it finds a match the auditflag property of the property
+    group is used. Otherwise the default configured in auditconfig/defaultflags is used.
+    """
     functionflow("getaudit_flags")
     observed_fmri=[]
     smf_fmri=os.environ['SMF_FMRI']
@@ -78,6 +87,9 @@ radcli.ADRGlobPattern({"service" : observer_service, "instance" : observer_insta
     return default_auditflags
 
 def findservicestobeobserved():
+    """ this function searches for dependencies with a name beginning with 
+    smfserviceauditing_  and pushes the fmri onto an array and return this.
+    """
     functionflow("findservicestobeobserved")
     observed_fmri=[]
     smf_fmri=os.environ['SMF_FMRI']
@@ -103,6 +115,9 @@ radcli.ADRGlobPattern({"service" : observer_service, "instance" : observer_insta
     return observed_fmri
     
 def findprocessesofacontract( contractid ):
+    """ this function fetches the process ids that have the same contract id by calling
+    pgrep
+    """
     functionflow("findprocessesofacontract")
     processes = []
     sanitized_contractid=sanitizing(contractid,"0-9")
@@ -114,6 +129,7 @@ def findprocessesofacontract( contractid ):
     return processes
     
 def set_auditflags(process, auditflags):
+    """set the auditflag after sanitizing a input a little bit"""
     functionflow("set_auditflags")
     sanitized_process=sanitizing(process,"0-9")
     sanitized_auditflags=sanitizing(auditflags,"a-z0-9,")
@@ -124,6 +140,10 @@ def set_auditflags(process, auditflags):
     return
     
 def findprocessesofanservice( servicename ):
+    """ This function finds processes of an server. In order to do so, it
+    gathers the contract id from the server and passes it to a function that fetches
+    the process ids of a contract id 
+    """
     functionflow("findprocessesofanservice")
     log("Service "+servicename)
     processes = []
@@ -155,6 +175,10 @@ radcli.ADRGlobPattern({"service" : observed_service, "instance" : observed_insta
     return processes 
            
 def iterate_through_observed_services():
+    """ Go through to all services and do the job
+    In principle this is the function where business logic starts.
+    """
+    
     functionflow("iterate_through_observed_services")
     observed_services=findservicestobeobserved()
     debug("found dependencies" + str(len(observed_services)))
